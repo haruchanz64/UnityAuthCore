@@ -1,0 +1,35 @@
+{
+  "name": "com.haruchanz64.unity-auth-core",
+  "version": "1.0.0",
+  "displayName": "UnityAuthCore",
+  "description": "Backend-agnostic authentication, account lifecycle, and typed REST API framework for Unity 6 with single-flight 401 refresh, pluggable IAuthBackendAdapter, Unity Multiplayer connection approval validation, UI Toolkit console, OpenAPI 3.0 spec, and an optional Dockerized reference server.",
+  "unity": "6000.0",
+  "license": "MIT",
+  "keywords": [
+    "authentication",
+    "auth",
+    "jwt",
+    "rest-api",
+    "multiplayer",
+    "docker",
+    "openapi",
+    "ui-toolkit",
+    "unity-tool"
+  ],
+  "author": {
+    "name": "haruchanz64",
+    "url": "https://haruchanz64.github.io"
+  },
+  "samples": [
+    {
+      "displayName": "Backend Adapters (Supabase, Firebase, Custom)",
+      "description": "Starter IAuthBackendAdapter implementations showing how to connect UnityAuthCore to Supabase, Firebase, or custom backends.",
+      "path": "Samples~/BackendAdapters"
+    },
+    {
+      "displayName": "Multiplayer Authenticators (NGO, Mirror, FishNet)",
+      "description": "Examples wiring MultiplayerAuthBridge into Netcode for GameObjects, Mirror, and FishNet connection approval.",
+      "path": "Samples~/MultiplayerAdapters"
+    }
+  ]
+}

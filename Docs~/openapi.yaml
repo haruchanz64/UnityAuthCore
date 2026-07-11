@@ -1,0 +1,270 @@
+openapi: 3.0.3
+info:
+  title: UnityAuthCore REST API Contract
+  version: 1.0.0
+  description: >
+    Backend-agnostic REST API contract consumed by RestAuthBackendAdapter in UnityAuthCore.
+    Deploy the optional Dockerized reference server in Server~/ or implement these endpoints
+    in ASP.NET Core, Go, Node.js, FastAPI, or any custom game backend.
+servers:
+  - url: http://localhost:8080
+    description: Local Docker reference server
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    ServerKeyAuth:
+      type: apiKey
+      in: header
+      name: X-Server-Key
+  schemas:
+    AuthUserProfile:
+      type: object
+      required: [accountId, displayName, isGuest, roles, linkedProviders]
+      properties:
+        accountId: { type: string, example: acc_8f1c9a2b4d0e }
+        displayName: { type: string, example: NovaPilot }
+        email: { type: string, format: email, example: player@example.com }
+        avatarUrl: { type: string, example: "" }
+        isGuest: { type: boolean, example: false }
+        roles:
+          type: array
+          items: { type: string }
+          example: [player]
+        linkedProviders:
+          type: array
+          items: { type: string }
+          example: [email]
+        metadataJson: { type: string, example: "{}" }
+    AuthSession:
+      type: object
+      required: [accessToken, refreshToken, tokenType, expiresAtUnixSeconds, user]
+      properties:
+        accessToken: { type: string }
+        refreshToken: { type: string }
+        tokenType: { type: string, example: Bearer }
+        expiresAtUnixSeconds: { type: integer, format: int64 }
+        providerId: { type: string, example: rest }
+        user: { $ref: '#/components/schemas/AuthUserProfile' }
+    TokenValidationResult:
+      type: object
+      required: [isValid]
+      properties:
+        isValid: { type: boolean }
+        accountId: { type: string }
+        displayName: { type: string }
+        isGuest: { type: boolean }
+        roles:
+          type: array
+          items: { type: string }
+        expiresAtUnixSeconds: { type: integer, format: int64 }
+        failureCode: { type: string }
+        failureReason: { type: string }
+    ApiError:
+      type: object
+      required: [statusCode, errorCode, message]
+      properties:
+        statusCode: { type: integer }
+        errorCode: { type: string, example: INVALID_CREDENTIALS }
+        message: { type: string }
+        requestId: { type: string }
+        retryAfterSeconds: { type: integer }
+        fieldErrors:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              reason: { type: string }
+paths:
+  /healthz:
+    get:
+      summary: Health check endpoint for Docker and orchestrators
+      responses:
+        '200':
+          description: Service healthy
+  /v1/auth/guest:
+    post:
+      summary: Sign in or create an anonymous device guest account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [deviceId]
+              properties:
+                deviceId: { type: string }
+                displayName: { type: string }
+      responses:
+        '200':
+          description: Guest session issued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthSession' }
+  /v1/auth/register:
+    post:
+      summary: Register a new email and password account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 6 }
+                displayName: { type: string }
+      responses:
+        '201':
+          description: Account created and session issued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthSession' }
+        '409':
+          description: Email already registered
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+  /v1/auth/login:
+    post:
+      summary: Authenticate with email and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        '200':
+          description: Session issued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthSession' }
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+  /v1/auth/refresh:
+    post:
+      summary: Rotate refresh token and issue a fresh access JWT (with token reuse detection)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses:
+        '200':
+          description: Rotated session issued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthSession' }
+        '401':
+          description: Invalid, expired, revoked, or reused refresh token
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+  /v1/auth/logout:
+    post:
+      summary: Revoke refresh token session family
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refreshToken: { type: string }
+      responses:
+        '204':
+          description: Session revoked
+  /v1/auth/introspect:
+    post:
+      summary: Dedicated game server token validation endpoint for Unity Multiplayer approval
+      security:
+        - ServerKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [accessToken]
+              properties:
+                accessToken: { type: string }
+      responses:
+        '200':
+          description: Token validation result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenValidationResult' }
+  /v1/account/me:
+    get:
+      summary: Fetch authenticated player profile
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Player profile
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthUserProfile' }
+        '401':
+          description: Missing or expired access token
+    patch:
+      summary: Update authenticated player profile fields
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                displayName: { type: string }
+                avatarUrl: { type: string }
+                metadataJson: { type: string }
+      responses:
+        '200':
+          description: Updated player profile
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthUserProfile' }
+  /v1/account/link:
+    post:
+      summary: Upgrade a guest account by binding an email and password
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 6 }
+      responses:
+        '200':
+          description: Upgraded session issued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthSession' }
+        '409':
+          description: Email already linked to another account

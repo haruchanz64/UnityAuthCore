@@ -1,0 +1,27 @@
+services:
+  unity-auth-core-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: unity-auth-core-server:1.0.0
+    container_name: unity-auth-core-server
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8080}:8080"
+    environment:
+      PORT: "8080"
+      HOST: "0.0.0.0"
+      JWT_SECRET: "${JWT_SECRET:-dev-local-mock-secret-change-in-production-32bytes}"
+      JWT_ISSUER: "${JWT_ISSUER:-unity-auth-core-server}"
+      JWT_AUDIENCE: "${JWT_AUDIENCE:-unity-game-client}"
+      ACCESS_TTL_SECONDS: "${ACCESS_TTL_SECONDS:-300}"
+      REFRESH_TTL_SECONDS: "${REFRESH_TTL_SECONDS:-604800}"
+      SERVER_API_KEY: "${SERVER_API_KEY:-}"
+      RATE_LIMIT_MAX: "${RATE_LIMIT_MAX:-120}"
+      RATE_LIMIT_WINDOW_MS: "${RATE_LIMIT_WINDOW_MS:-60000}"
+      DATA_FILE: "/app/data/auth-store.json"
+    volumes:
+      - auth_data:/app/data
+
+volumes:
+  auth_data:

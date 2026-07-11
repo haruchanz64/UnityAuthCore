@@ -1,0 +1,11 @@
+.DS_Store
+Thumbs.db
+*.user
+*.suo
+*.csproj
+*.sln
+.vs/
+.idea/
+Server~/data/
+Server~/.env
+Server~/node_modules/
