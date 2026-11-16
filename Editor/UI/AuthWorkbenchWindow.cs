@@ -40,7 +40,7 @@ namespace UnityAuthCore.Editor.UI
         private VisualElement _body;
         private readonly List<Button> _tabButtons = new List<Button>();
 
-        [MenuItem("Tools/UnityAuthCore/Auth & API Console")]
+        [MenuItem("Tools/HaruChanZ64/Networking/UnityAuthCore/Auth and API Console", false, 146)]
         public static void OpenWindow()
         {
             var win = GetWindow<AuthWorkbenchWindow>("UnityAuthCore Console");

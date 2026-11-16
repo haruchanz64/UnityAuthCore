@@ -12,7 +12,7 @@ UnityAuthCore separates HTTP transport, auth backend adapters, encrypted token s
 - **JWT utilities and encrypted token storage:** Built-in Base64Url decoding, claims inspection, HS256 signing and constant-time verification (`JwtUtility`), plus `InMemoryTokenStore` and `EncryptedFileTokenStore` (AES-256-CBC with Encrypt-then-MAC HMAC-SHA256 tamper rejection).
 - **Unity Multiplayer connection approval (`MultiplayerAuthBridge`):** Transport-agnostic UTF-8 `MultiplayerAuthTicket` serialization for Netcode for GameObjects (`ConnectionData`), Mirror, and FishNet, paired with dedicated-server validators (`LocalHs256JwtValidator` and `RemoteIntrospectionValidator`) and an active `clientId` to `accountId` registry with duplicate-login control.
 - **Optional Dockerized reference server and OpenAPI 3.0 contract:** Includes `Docs~/openapi.yaml` and a self-contained Node.js 22 LTS Docker backend under `Server~/` (`Dockerfile`, `docker-compose.yml`, `scrypt` password hashing, rotating refresh tokens with reuse-detection family revocation, rate limiting, and `/v1/auth/introspect`).
-- **UI Toolkit Auth & API Console (`Tools > UnityAuthCore > Auth & API Console`):** Four-tab Editor workbench for running auth flows, inspecting decoded JWT claims, testing single-flight `401` refresh across concurrent requests, verifying multiplayer handshake tickets, and inspecting live HTTP traces.
+- **UI Toolkit Auth & API Console (`Tools > HaruChanZ64 > Networking > UnityAuthCore > Auth and API Console`):** Four-tab Editor workbench for running auth flows, inspecting decoded JWT claims, testing single-flight `401` refresh across concurrent requests, verifying multiplayer handshake tickets, and inspecting live HTTP traces.
 - **Canvas and Scene wiring (`AccountController`):** Drop-in `MonoBehaviour` with Inspector-bindable `UnityEvent` hooks (`onSignedIn`, `onSignedOut`, `onSessionRefreshed`, `onProfileUpdated`, `onAuthError`, `onBusyStateChanged`) and custom adapter injection.
 
 ## Requirements
@@ -48,7 +48,7 @@ Add the package path to `Packages/manifest.json`:
 
 ### 1. Test in the Editor console
 
-Open **Tools > UnityAuthCore > Auth & API Console**. In the default **MockInProcess** mode you can sign in as a guest, upgrade to email/password, inspect decoded HS256 JWT claims, force-expire the access token while firing 3 concurrent requests, and verify multiplayer tickets immediately.
+Open **Tools > HaruChanZ64 > Networking > UnityAuthCore > Auth and API Console**. In the default **MockInProcess** mode you can sign in as a guest, upgrade to email/password, inspect decoded HS256 JWT claims, force-expire the access token while firing 3 concurrent requests, and verify multiplayer tickets immediately.
 
 ### 2. Deploy the optional Docker backend (or bring your own)
 
