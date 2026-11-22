@@ -24,6 +24,9 @@ const state = {
 
 const rateBuckets = new Map();
 
+/**
+ * Loads persisted account, index, and refresh-token state from DATA_FILE into memory if present.
+ */
 function loadState() {
   try {
     if (fs.existsSync(DATA_FILE)) {
@@ -38,6 +41,9 @@ function loadState() {
   }
 }
 
+/**
+ * Persists the current in-memory auth state to DATA_FILE as formatted UTF-8 JSON.
+ */
 function persistState() {
   try {
     fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
@@ -47,6 +53,11 @@ function persistState() {
   }
 }
 
+/**
+ * Encodes a string or Buffer using RFC 7515 unpadded Base64Url encoding.
+ * @param {Buffer|string} buf Raw bytes or UTF-8 string to encode.
+ * @returns {string} Unpadded Base64Url string.
+ */
 function b64urlEncode(buf) {
   return Buffer.from(buf)
     .toString("base64")
@@ -55,18 +66,34 @@ function b64urlEncode(buf) {
     .replace(/\//g, "_");
 }
 
+/**
+ * Decodes a Base64Url string back into a raw Node.js Buffer.
+ * @param {string} str Unpadded or padded Base64Url input.
+ * @returns {Buffer} Decoded binary buffer.
+ */
 function b64urlDecode(str) {
   let s = str.replace(/-/g, "+").replace(/_/g, "/");
   while (s.length % 4 !== 0) s += "=";
   return Buffer.from(s, "base64");
 }
 
+/**
+ * Hashes a plaintext password with a random 16-byte salt using scrypt (64-byte derived key).
+ * @param {string} password Plaintext password to hash.
+ * @returns {string} Salted hash formatted as `<saltHex>:<derivedHex>`.
+ */
 function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString("hex");
   const derived = crypto.scryptSync(password, salt, 64).toString("hex");
   return `${salt}:${derived}`;
 }
 
+/**
+ * Verifies a plaintext password against a stored `<saltHex>:<derivedHex>` scrypt hash in constant time.
+ * @param {string} password Candidate plaintext password.
+ * @param {string} stored Stored salted hash string.
+ * @returns {boolean} True when the password matches the stored hash.
+ */
 function verifyPassword(password, stored) {
   if (!stored || !stored.includes(":")) return false;
   const [salt, expectedHex] = stored.split(":");
@@ -75,6 +102,11 @@ function verifyPassword(password, stored) {
   return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
 }
 
+/**
+ * Signs a JSON payload object as a compact HS256 JWT using JWT_SECRET.
+ * @param {object} payload JWT claims payload to encode.
+ * @returns {string} Compact `<header>.<payload>.<signature>` JWT string.
+ */
 function signJwt(payload) {
   const header = b64urlEncode(JSON.stringify({ alg: "HS256", typ: "JWT" }));
   const body = b64urlEncode(JSON.stringify(payload));
@@ -83,6 +115,11 @@ function signJwt(payload) {
   return `${input}.${b64urlEncode(sig)}`;
 }
 
+/**
+ * Verifies an HS256 JWT signature in constant time and validates exp, iss, and aud claims.
+ * @param {string} token Compact JWT string to inspect.
+ * @returns {object} Validation result containing `isValid` and either identity claims or `failureCode`/`failureReason`.
+ */
 function verifyJwt(token) {
   if (!token || typeof token !== "string") {
     return { isValid: false, failureCode: "TOKEN_MISSING", failureReason: "Access token is empty." };
@@ -128,6 +165,11 @@ function verifyJwt(token) {
   };
 }
 
+/**
+ * Projects an internal account record into the public OpenAPI `AuthUserProfile` response shape.
+ * @param {object} acc Stored account record.
+ * @returns {object} Public user profile without sensitive fields such as `passwordHash`.
+ */
 function toProfile(acc) {
   return {
     accountId: acc.accountId,
@@ -141,6 +183,12 @@ function toProfile(acc) {
   };
 }
 
+/**
+ * Mints an HS256 access JWT and rotating refresh token for an account, persisting the updated store.
+ * @param {object} acc Stored account record.
+ * @param {string|null} [familyId=null] Existing refresh-token family ID when rotating, or null to start a new family.
+ * @returns {object} `AuthSession` JSON response object.
+ */
 function issueSession(acc, familyId = null) {
   const now = Math.floor(Date.now() / 1000);
   const exp = now + ACCESS_TTL_SECONDS;
@@ -178,6 +226,10 @@ function issueSession(acc, familyId = null) {
   };
 }
 
+/**
+ * Revokes every refresh token belonging to the specified session family and persists state.
+ * @param {string} familyId Session family identifier to revoke.
+ */
 function revokeFamily(familyId) {
   for (const rec of Object.values(state.refreshTokens)) {
     if (rec.familyId === familyId) rec.revoked = true;
@@ -185,6 +237,11 @@ function revokeFamily(familyId) {
   persistState();
 }
 
+/**
+ * Reads and parses a JSON HTTP request body up to 64 KiB, returning an empty object for blank bodies.
+ * @param {http.IncomingMessage} req Incoming Node.js HTTP request stream.
+ * @returns {Promise<object>} Parsed JSON payload.
+ */
 function readJsonBody(req) {
   return new Promise((resolve, reject) => {
     let raw = "";
@@ -206,6 +263,14 @@ function readJsonBody(req) {
   });
 }
 
+/**
+ * Writes a JSON response with CORS headers and `X-Request-Id` correlation header.
+ * @param {http.ServerResponse} res Outgoing Node.js HTTP response.
+ * @param {number} status HTTP status code (204 sends an empty body).
+ * @param {object|null} payload Serializable JSON body.
+ * @param {string} reqId Request correlation ID echoed in `X-Request-Id`.
+ * @param {Record<string, string>} [extraHeaders={}] Additional HTTP response headers.
+ */
 function sendJson(res, status, payload, reqId, extraHeaders = {}) {
   const body = status === 204 ? "" : JSON.stringify(payload);
   res.writeHead(status, {
@@ -219,11 +284,25 @@ function sendJson(res, status, payload, reqId, extraHeaders = {}) {
   res.end(body);
 }
 
+/**
+ * Sends a structured `ApiError` JSON envelope and optional `Retry-After` header.
+ * @param {http.ServerResponse} res Outgoing Node.js HTTP response.
+ * @param {number} status HTTP error status code.
+ * @param {string} errorCode Machine-readable error identifier.
+ * @param {string} message Human-readable failure description.
+ * @param {string} reqId Request correlation ID.
+ * @param {number} [retryAfterSeconds=0] Optional retry wait time in seconds.
+ */
 function sendError(res, status, errorCode, message, reqId, retryAfterSeconds = 0) {
   const headers = retryAfterSeconds > 0 ? { "Retry-After": String(retryAfterSeconds) } : {};
   sendJson(res, status, { statusCode: status, errorCode, message, requestId: reqId, retryAfterSeconds }, reqId, headers);
 }
 
+/**
+ * Applies fixed-window per-IP rate limiting using RATE_LIMIT_MAX and RATE_LIMIT_WINDOW_MS.
+ * @param {string} ip Client remote IP address.
+ * @returns {boolean} True when the request is within the allowed quota; false when rate limited.
+ */
 function checkRateLimit(ip) {
   const now = Date.now();
   let bucket = rateBuckets.get(ip);
@@ -235,6 +314,14 @@ function checkRateLimit(ip) {
   return bucket.count <= RATE_LIMIT_MAX;
 }
 
+/**
+ * Validates the `Authorization: Bearer` token on a protected route and resolves the owning account.
+ * Writes a 401 error response automatically when authentication fails.
+ * @param {http.IncomingMessage} req Incoming HTTP request.
+ * @param {http.ServerResponse} res Outgoing HTTP response used to send 401 errors.
+ * @param {string} reqId Request correlation ID.
+ * @returns {object|null} Authenticated account record, or null if a 401 response was sent.
+ */
 function authenticateBearer(req, res, reqId) {
   const auth = req.headers.authorization || "";
   if (!auth.startsWith("Bearer ")) {
@@ -428,6 +515,9 @@ server.listen(PORT, HOST, () => {
   console.log(`[UnityAuthCore Reference Server] Listening on http://${HOST}:${PORT}`);
 });
 
+/**
+ * Persists in-memory auth state to disk and closes the HTTP server before exiting.
+ */
 function shutdown() {
   persistState();
   server.close(() => process.exit(0));

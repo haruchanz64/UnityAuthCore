@@ -35,6 +35,11 @@ namespace UnityAuthCore.Security
             public string typ = "JWT";
         }
 
+        /// <summary>
+        /// Encodes raw bytes using RFC 7515 unpadded Base64Url encoding.
+        /// </summary>
+        /// <param name="bytes">Input bytes to encode.</param>
+        /// <returns>Base64Url string without trailing <c>=</c> padding.</returns>
         public static string Base64UrlEncode(byte[] bytes)
         {
             return Convert.ToBase64String(bytes)
@@ -43,10 +48,16 @@ namespace UnityAuthCore.Security
                 .Replace('/', '_');
         }
 
+        /// <summary>
+        /// Decodes an unpadded or padded Base64Url string back to raw bytes.
+        /// </summary>
+        /// <param name="input">Base64Url-encoded string; returns an empty array when null or empty.</param>
+        /// <returns>Decoded byte array.</returns>
         public static byte[] Base64UrlDecode(string input)
         {
             if (string.IsNullOrEmpty(input)) return Array.Empty<byte>();
             string s = input.Replace('-', '+').Replace('_', '/');
+            // Restore standard Base64 padding before decoding
             switch (s.Length % 4)
             {
                 case 2: s += "=="; break;
@@ -55,6 +66,13 @@ namespace UnityAuthCore.Security
             return Convert.FromBase64String(s);
         }
 
+        /// <summary>
+        /// Serializes <paramref name="claims"/> into a compact JWT signed with HMAC-SHA256 (<c>HS256</c>).
+        /// Generates a random <c>jti</c> when <see cref="JwtClaims.jti"/> is empty.
+        /// </summary>
+        /// <param name="claims">Claims payload to encode.</param>
+        /// <param name="secret">UTF-8 signing key shared with the verifying server.</param>
+        /// <returns>Compact three-segment JWT string (<c>header.payload.signature</c>).</returns>
         public static string CreateHs256Token(JwtClaims claims, string secret)
         {
             if (claims == null) throw new ArgumentNullException(nameof(claims));
@@ -83,6 +101,13 @@ namespace UnityAuthCore.Security
             return $"{signingInput}.{Base64UrlEncode(sigBytes)}";
         }
 
+        /// <summary>
+        /// Decodes the header and payload segments of a JWT without verifying its cryptographic signature.
+        /// </summary>
+        /// <param name="jwt">Compact JWT string to inspect.</param>
+        /// <param name="claims">Outputs the decoded <see cref="JwtClaims"/> on success; otherwise null.</param>
+        /// <param name="error">Outputs a parse failure reason when returning false; otherwise null.</param>
+        /// <returns>True when the token has three segments and valid Base64Url JSON payload.</returns>
         public static bool TryParseClaims(string jwt, out JwtClaims claims, out string error)
         {
             claims = null;
@@ -136,6 +161,16 @@ namespace UnityAuthCore.Security
             }
         }
 
+        /// <summary>
+        /// Verifies a JWT's HS256 signature in constant time and validates expiry, issuer, and audience claims.
+        /// </summary>
+        /// <param name="jwt">Compact JWT string to verify.</param>
+        /// <param name="secret">Expected HS256 signing secret.</param>
+        /// <param name="expectedIssuer">Optional required <c>iss</c> claim; skipped when null or empty.</param>
+        /// <param name="expectedAudience">Optional required <c>aud</c> claim; skipped when null or empty.</param>
+        /// <param name="clockSkewSeconds">Allowed clock drift in seconds after <c>exp</c>; clamped to 0 minimum.</param>
+        /// <param name="utcNow">Optional UTC clock override for tests; defaults to <see cref="DateTime.UtcNow"/>.</param>
+        /// <returns>A <see cref="TokenValidationResult"/> with verified identity fields or a failure code and reason.</returns>
         public static TokenValidationResult VerifyHs256(
             string jwt,
             string secret,
@@ -208,6 +243,9 @@ namespace UnityAuthCore.Security
             };
         }
 
+        /// <summary>
+        /// Computes the raw HMAC-SHA256 digest of UTF-8 <paramref name="data"/> using <paramref name="secret"/>.
+        /// </summary>
         private static byte[] ComputeHmacSha256(string data, string secret)
         {
             using (var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secret)))
@@ -216,6 +254,9 @@ namespace UnityAuthCore.Security
             }
         }
 
+        /// <summary>
+        /// Compares two equal-length byte arrays without short-circuiting to mitigate timing side channels.
+        /// </summary>
         private static bool FixedTimeEquals(byte[] a, byte[] b)
         {
             if (a == null || b == null || a.Length != b.Length) return false;
@@ -227,6 +268,9 @@ namespace UnityAuthCore.Security
             return diff == 0;
         }
 
+        /// <summary>
+        /// Constructs a failed <see cref="TokenValidationResult"/> with the specified code and message.
+        /// </summary>
         private static TokenValidationResult Invalid(string code, string reason)
         {
             return new TokenValidationResult

@@ -9,21 +9,28 @@ using UnityEngine;
 
 namespace UnityAuthCore.Security
 {
+    /// <summary>
+    /// Volatile <see cref="ITokenStore"/> that clones and holds the active <see cref="AuthSession"/> in memory only.
+    /// Useful for Editor consoles, headless dedicated servers, and unit tests.
+    /// </summary>
     public sealed class InMemoryTokenStore : ITokenStore
     {
         private AuthSession _session;
 
+        /// <inheritdoc/>
         public Task SaveAsync(AuthSession session, CancellationToken ct = default)
         {
             _session = session != null ? session.Clone() : null;
             return Task.CompletedTask;
         }
 
+        /// <inheritdoc/>
         public Task<AuthSession> LoadAsync(CancellationToken ct = default)
         {
             return Task.FromResult(_session != null ? _session.Clone() : null);
         }
 
+        /// <inheritdoc/>
         public Task ClearAsync(CancellationToken ct = default)
         {
             _session = null;
@@ -32,7 +39,7 @@ namespace UnityAuthCore.Security
     }
 
     /// <summary>
-    /// Persistent ITokenStore using AES-256-CBC with Encrypt-then-MAC (HMAC-SHA256).
+    /// Persistent <see cref="ITokenStore"/> using AES-256-CBC with Encrypt-then-MAC (HMAC-SHA256).
     /// Rejects modified or truncated files cleanly instead of loading corrupted sessions.
     /// </summary>
     public sealed class EncryptedFileTokenStore : ITokenStore
@@ -41,8 +48,14 @@ namespace UnityAuthCore.Security
         private readonly byte[] _encKey;
         private readonly byte[] _macKey;
 
+        /// <summary>Absolute file path where the encrypted session envelope is written.</summary>
         public string FilePath => _filePath;
 
+        /// <summary>
+        /// Creates an encrypted file store deriving separate encryption and MAC keys via domain-separated SHA-256 hashes.
+        /// </summary>
+        /// <param name="filePath">Target file path; defaults to <c>unity_auth_core_session.dat</c> under <see cref="Application.persistentDataPath"/>.</param>
+        /// <param name="passphrase">Optional key derivation secret; defaults to a device-scoped value combining <see cref="Application.identifier"/> and <see cref="SystemInfo.deviceUniqueIdentifier"/>.</param>
         public EncryptedFileTokenStore(string filePath = null, string passphrase = null)
         {
             _filePath = string.IsNullOrWhiteSpace(filePath)
@@ -60,6 +73,12 @@ namespace UnityAuthCore.Security
             }
         }
 
+        /// <summary>
+        /// Encrypts and authenticates <paramref name="session"/> to disk as <c>[32-byte HMAC][16-byte IV][AES-256-CBC ciphertext]</c>.
+        /// Deletes the file if <paramref name="session"/> is null.
+        /// </summary>
+        /// <param name="session">Session to persist, or null to clear stored data.</param>
+        /// <param name="ct">Optional cancellation token.</param>
         public Task SaveAsync(AuthSession session, CancellationToken ct = default)
         {
             if (session == null)
@@ -96,6 +115,7 @@ namespace UnityAuthCore.Security
             Buffer.BlockCopy(iv, 0, payload, 0, iv.Length);
             Buffer.BlockCopy(cipherBytes, 0, payload, iv.Length, cipherBytes.Length);
 
+            // Compute HMAC over IV + ciphertext (Encrypt-then-MAC)
             byte[] mac;
             using (var hmac = new HMACSHA256(_macKey))
             {
@@ -110,6 +130,12 @@ namespace UnityAuthCore.Security
             return Task.CompletedTask;
         }
 
+        /// <summary>
+        /// Verifies the stored HMAC-SHA256 tag in constant time before decrypting and deserializing the session.
+        /// Returns null when the file is missing, truncated, tampered, or unreadable.
+        /// </summary>
+        /// <param name="ct">Optional cancellation token.</param>
+        /// <returns>The decrypted <see cref="AuthSession"/>, or null if unavailable or invalid.</returns>
         public Task<AuthSession> LoadAsync(CancellationToken ct = default)
         {
             if (!File.Exists(_filePath))
@@ -120,6 +146,7 @@ namespace UnityAuthCore.Security
             try
             {
                 byte[] envelope = File.ReadAllBytes(_filePath);
+                // Minimum valid envelope requires 32-byte HMAC + 16-byte IV + at least 1 byte of ciphertext
                 if (envelope.Length <= 32 + 16)
                 {
                     return Task.FromResult<AuthSession>(null);
@@ -136,6 +163,7 @@ namespace UnityAuthCore.Security
                     expectedMac = hmac.ComputeHash(payload);
                 }
 
+                // Constant-time MAC verification before attempting AES decryption
                 int diff = 0;
                 for (int i = 0; i < 32; i++) diff |= storedMac[i] ^ expectedMac[i];
                 if (diff != 0)
@@ -170,6 +198,7 @@ namespace UnityAuthCore.Security
             }
         }
 
+        /// <inheritdoc/>
         public Task ClearAsync(CancellationToken ct = default)
         {
             if (File.Exists(_filePath))

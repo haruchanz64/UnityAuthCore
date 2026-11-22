@@ -22,10 +22,23 @@ namespace UnityAuthCore.Http
         private readonly object _refreshLock = new object();
         private Task<bool> _inFlightRefreshTask;
 
+        /// <summary>
+        /// Delegate invoked once across concurrent 401 failures on authenticated requests to refresh tokens before replay.
+        /// Should return true when a fresh access token is ready for retry.
+        /// </summary>
         public Func<CancellationToken, Task<bool>> OnUnauthorizedRefreshAsync { get; set; }
+        /// <summary>Chronological ring buffer of captured <see cref="ApiTraceEntry"/> records.</summary>
         public IReadOnlyList<ApiTraceEntry> Traces => _traces;
+        /// <summary>Raised after each HTTP attempt is recorded into <see cref="Traces"/>.</summary>
         public event Action<ApiTraceEntry> OnRequestTraced;
 
+        /// <summary>
+        /// Initializes an <see cref="ApiHttpClient"/> with a transport, retry policy, and trace ring buffer.
+        /// Automatically registers <see cref="RequestIdInterceptor"/>.
+        /// </summary>
+        /// <param name="transport">Low-level HTTP transport implementation.</param>
+        /// <param name="retryPolicy">Optional retry policy; defaults to <see cref="ExponentialBackoffRetryPolicy"/>.</param>
+        /// <param name="maxTraces">Maximum number of trace entries retained in memory (clamped to a minimum of 10).</param>
         public ApiHttpClient(
             IHttpTransport transport,
             IRetryPolicy retryPolicy = null,
@@ -37,6 +50,10 @@ namespace UnityAuthCore.Http
             _interceptors.Add(new RequestIdInterceptor());
         }
 
+        /// <summary>
+        /// Appends <paramref name="interceptor"/> to the middleware pipeline if non-null and not already registered.
+        /// </summary>
+        /// <param name="interceptor">Interceptor executed before send and in reverse order after receive.</param>
         public void AddInterceptor(IApiInterceptor interceptor)
         {
             if (interceptor != null && !_interceptors.Contains(interceptor))
@@ -45,8 +62,17 @@ namespace UnityAuthCore.Http
             }
         }
 
+        /// <summary>
+        /// Removes all captured entries from <see cref="Traces"/>.
+        /// </summary>
         public void ClearTraces() => _traces.Clear();
 
+        /// <summary>
+        /// Sends <paramref name="request"/> through interceptors, single-flight 401 refresh replay, and transient retry handling.
+        /// </summary>
+        /// <param name="request">Request descriptor to dispatch.</param>
+        /// <param name="ct">Optional cancellation token.</param>
+        /// <returns>The final <see cref="HttpRawResponse"/> after any refresh replay or retry attempts.</returns>
         public async Task<HttpRawResponse> SendRawAsync(ApiRequest request, CancellationToken ct = default)
         {
             if (request == null) throw new ArgumentNullException(nameof(request));
@@ -99,6 +125,14 @@ namespace UnityAuthCore.Http
             }
         }
 
+        /// <summary>
+        /// Sends <paramref name="request"/> and deserializes a 2xx JSON response into <typeparamref name="T"/> via <see cref="JsonUtility"/>,
+        /// or returns a structured <see cref="ApiError"/> on HTTP, network, or deserialization failure.
+        /// </summary>
+        /// <typeparam name="T">Target payload type (<see cref="bool"/> returns true on any 2xx; <see cref="string"/> returns the raw body).</typeparam>
+        /// <param name="request">Request descriptor to dispatch.</param>
+        /// <param name="ct">Optional cancellation token.</param>
+        /// <returns>An <see cref="AuthResult{T}"/> containing the parsed payload or structured error.</returns>
         public async Task<AuthResult<T>> SendJsonAsync<T>(ApiRequest request, CancellationToken ct = default)
         {
             HttpRawResponse raw = await SendRawAsync(request, ct);
@@ -134,6 +168,9 @@ namespace UnityAuthCore.Http
             }
         }
 
+        /// <summary>
+        /// Coalesces concurrent 401 refresh callers onto a single shared in-flight refresh task.
+        /// </summary>
         private Task<bool> ExecuteSingleFlightRefreshAsync(CancellationToken ct)
         {
             Task<bool> sharedTask;
@@ -148,6 +185,9 @@ namespace UnityAuthCore.Http
             return sharedTask;
         }
 
+        /// <summary>
+        /// Executes <see cref="OnUnauthorizedRefreshAsync"/> and clears the shared in-flight handle on completion.
+        /// </summary>
         private async Task<bool> RunRefreshCoreAsync(CancellationToken ct)
         {
             try
@@ -167,6 +207,9 @@ namespace UnityAuthCore.Http
             }
         }
 
+        /// <summary>
+        /// Appends a bounded trace entry for the completed HTTP attempt and notifies <see cref="OnRequestTraced"/>.
+        /// </summary>
         private void RecordTrace(ApiRequest request, HttpRawResponse response, bool wasRetried)
         {
             var entry = new ApiTraceEntry
@@ -192,6 +235,9 @@ namespace UnityAuthCore.Http
             OnRequestTraced?.Invoke(entry);
         }
 
+        /// <summary>
+        /// Extracts a structured <see cref="ApiError"/> from a failed response body, falling back to generic status or network error metadata.
+        /// </summary>
         private static ApiError ParseError(ApiRequest req, HttpRawResponse raw)
         {
             string reqId = GetRequestId(req, raw);
@@ -228,6 +274,9 @@ namespace UnityAuthCore.Http
             return ApiError.Create(raw.StatusCode, code, message, reqId, retryAfter);
         }
 
+        /// <summary>
+        /// Resolves the correlation ID from response or request <c>X-Request-Id</c> headers.
+        /// </summary>
         private static string GetRequestId(ApiRequest req, HttpRawResponse resp)
         {
             if (resp != null && resp.Headers.TryGetValue("X-Request-Id", out string rId)) return rId;
@@ -235,6 +284,9 @@ namespace UnityAuthCore.Http
             return string.Empty;
         }
 
+        /// <summary>
+        /// Redacts request bodies containing a <c>"password"</c> JSON key before storing them in trace logs.
+        /// </summary>
         private static string SanitizeBody(string body)
         {
             if (string.IsNullOrEmpty(body)) return string.Empty;

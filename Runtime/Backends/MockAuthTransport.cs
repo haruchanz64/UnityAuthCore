@@ -52,24 +52,41 @@ namespace UnityAuthCore.Backends
         private readonly Dictionary<string, RefreshRecord> _refreshTokens = new Dictionary<string, RefreshRecord>(StringComparer.Ordinal);
         private readonly Func<DateTime> _utcNow;
 
+        /// <summary>HS256 signing secret used to sign and verify mock access JWTs.</summary>
         public string JwtSecret { get; set; } = "dev-local-mock-secret-change-in-production-32bytes";
+        /// <summary>JWT issuer (<c>iss</c>) embedded in issued mock tokens.</summary>
         public string Issuer { get; set; } = "unity-auth-core-mock";
+        /// <summary>JWT audience (<c>aud</c>) embedded in issued mock tokens.</summary>
         public string Audience { get; set; } = "unity-game-client";
+        /// <summary>Lifetime in seconds for minted access tokens (minimum effective value is 5 seconds).</summary>
         public int AccessTokenTtlSeconds { get; set; } = 300;
+        /// <summary>Lifetime in seconds for minted refresh tokens (minimum effective value is 60 seconds).</summary>
         public int RefreshTokenTtlSeconds { get; set; } = 86400 * 7;
+        /// <summary>Optional artificial delay in milliseconds applied before routing each request.</summary>
         public int SimulatedLatencyMs { get; set; } = 0;
 
-        // Fault injection & telemetry counters for tests and Editor workbench
+        // Fault injection and telemetry counters for tests and Editor workbench
+        /// <summary>Number of requests dispatched to <c>/v1/auth/refresh</c> since creation or the last <see cref="Reset"/>.</summary>
         public int RefreshEndpointHits { get; private set; }
+        /// <summary>Total number of requests handled by <see cref="SendAsync"/> since creation or the last <see cref="Reset"/>.</summary>
         public int TotalRequestsHandled { get; private set; }
+        /// <summary>When true, the next protected endpoint call returns HTTP 401 and resets this flag to false.</summary>
         public bool ForceNextProtectedCall401 { get; set; }
+        /// <summary>Remaining number of incoming requests forced to return HTTP 429 with a 1-second <c>Retry-After</c> header.</summary>
         public int ForceNextRequests429Count { get; set; }
 
+        /// <summary>
+        /// Initializes a new in-process mock auth server transport.
+        /// </summary>
+        /// <param name="utcNowProvider">Optional UTC clock override for deterministic token expiry tests.</param>
         public MockAuthTransport(Func<DateTime> utcNowProvider = null)
         {
             _utcNow = utcNowProvider ?? (() => DateTime.UtcNow);
         }
 
+        /// <summary>
+        /// Clears all in-memory accounts, refresh token families, telemetry counters, and fault-injection flags.
+        /// </summary>
         public void Reset()
         {
             _accountsById.Clear();
@@ -82,6 +99,12 @@ namespace UnityAuthCore.Backends
             ForceNextRequests429Count = 0;
         }
 
+        /// <summary>
+        /// Routes <paramref name="request"/> against the in-memory v1 auth endpoints and returns a simulated raw HTTP response.
+        /// </summary>
+        /// <param name="request">Outgoing API request descriptor.</param>
+        /// <param name="ct">Optional cancellation token honored during <see cref="SimulatedLatencyMs"/>.</param>
+        /// <returns>Simulated <see cref="HttpRawResponse"/> including <c>X-Request-Id</c> and measured duration.</returns>
         public async Task<HttpRawResponse> SendAsync(ApiRequest request, CancellationToken ct = default)
         {
             var sw = Stopwatch.StartNew();
@@ -148,6 +171,9 @@ namespace UnityAuthCore.Backends
             return resp;
         }
 
+        /// <summary>
+        /// Handles <c>POST /v1/auth/guest</c>, creating or reusing a guest account keyed by device ID.
+        /// </summary>
         private HttpRawResponse HandleGuest(string body, string reqId)
         {
             var dto = JsonUtility.FromJson<GuestDto>(body ?? "{}");
@@ -171,6 +197,9 @@ namespace UnityAuthCore.Backends
             return JsonResponse(200, IssueSession(acc, familyId: null));
         }
 
+        /// <summary>
+        /// Handles <c>POST /v1/auth/register</c>, validating email/password constraints and returning 201 or 409 on conflict.
+        /// </summary>
         private HttpRawResponse HandleRegister(string body, string reqId)
         {
             var dto = JsonUtility.FromJson<RegDto>(body ?? "{}");
@@ -203,6 +232,9 @@ namespace UnityAuthCore.Backends
             return JsonResponse(201, IssueSession(acc, familyId: null));
         }
 
+        /// <summary>
+        /// Handles <c>POST /v1/auth/login</c>, verifying email and password credentials against stored mock accounts.
+        /// </summary>
         private HttpRawResponse HandleLogin(string body, string reqId)
         {
             var dto = JsonUtility.FromJson<LoginDto>(body ?? "{}");
@@ -216,6 +248,9 @@ namespace UnityAuthCore.Backends
             return JsonResponse(200, IssueSession(acc, familyId: null));
         }
 
+        /// <summary>
+        /// Handles <c>POST /v1/auth/refresh</c>, rotating the refresh token within its family and revoking the entire family on replay.
+        /// </summary>
         private HttpRawResponse HandleRefresh(string body, string reqId)
         {
             var dto = JsonUtility.FromJson<RefreshDto>(body ?? "{}");
@@ -231,7 +266,7 @@ namespace UnityAuthCore.Backends
                 return ErrorResponse(401, "REFRESH_TOKEN_REVOKED", "Refresh token is revoked or expired.", reqId);
             }
 
-            // Refresh token reuse detection: replaying an already-consumed token revokes the entire family!
+            // Refresh token reuse detection: replaying an already-consumed token revokes the entire family
             if (rec.Consumed)
             {
                 RevokeFamily(rec.FamilyId);
@@ -247,6 +282,9 @@ namespace UnityAuthCore.Backends
             return JsonResponse(200, IssueSession(acc, familyId: rec.FamilyId));
         }
 
+        /// <summary>
+        /// Handles <c>POST /v1/auth/logout</c>, revoking the refresh token's session family if present and returning 204.
+        /// </summary>
         private HttpRawResponse HandleLogout(string body, string reqId)
         {
             var dto = JsonUtility.FromJson<RefreshDto>(body ?? "{}");
@@ -258,6 +296,9 @@ namespace UnityAuthCore.Backends
             return new HttpRawResponse { StatusCode = 204, Body = string.Empty };
         }
 
+        /// <summary>
+        /// Handles <c>POST /v1/auth/introspect</c>, verifying the supplied access token with <see cref="JwtUtility.VerifyHs256"/>.
+        /// </summary>
         private HttpRawResponse HandleIntrospect(string body, string reqId)
         {
             var dto = JsonUtility.FromJson<IntrospectDto>(body ?? "{}");
@@ -265,6 +306,9 @@ namespace UnityAuthCore.Backends
             return JsonResponse(200, val);
         }
 
+        /// <summary>
+        /// Handles <c>GET /v1/account/me</c> for an authenticated bearer session.
+        /// </summary>
         private HttpRawResponse HandleGetProfile(ApiRequest req, string reqId)
         {
             if (!TryAuthenticateBearer(req, reqId, out MockAccount acc, out HttpRawResponse err))
@@ -274,6 +318,9 @@ namespace UnityAuthCore.Backends
             return JsonResponse(200, ToProfile(acc));
         }
 
+        /// <summary>
+        /// Handles <c>PATCH /v1/account/me</c>, mutating non-null profile fields on the authenticated mock account.
+        /// </summary>
         private HttpRawResponse HandleUpdateProfile(ApiRequest req, string reqId)
         {
             if (!TryAuthenticateBearer(req, reqId, out MockAccount acc, out HttpRawResponse err))
@@ -289,6 +336,9 @@ namespace UnityAuthCore.Backends
             return JsonResponse(200, ToProfile(acc));
         }
 
+        /// <summary>
+        /// Handles <c>POST /v1/account/link</c>, upgrading a guest account to an email/password account and minting a fresh session.
+        /// </summary>
         private HttpRawResponse HandleLinkEmail(ApiRequest req, string reqId)
         {
             if (!TryAuthenticateBearer(req, reqId, out MockAccount acc, out HttpRawResponse err))
@@ -316,6 +366,9 @@ namespace UnityAuthCore.Backends
             return JsonResponse(200, IssueSession(acc, familyId: null));
         }
 
+        /// <summary>
+        /// Validates the request's <c>Authorization: Bearer</c> JWT and resolves the owning <see cref="MockAccount"/>.
+        /// </summary>
         private bool TryAuthenticateBearer(ApiRequest req, string reqId, out MockAccount account, out HttpRawResponse error)
         {
             account = null;
@@ -353,6 +406,9 @@ namespace UnityAuthCore.Backends
             return true;
         }
 
+        /// <summary>
+        /// Mints a new HS256 access token and refresh token record under <paramref name="familyId"/> (or a new family when null).
+        /// </summary>
         private AuthSession IssueSession(MockAccount acc, string familyId)
         {
             long now = NowUnix();
@@ -397,6 +453,9 @@ namespace UnityAuthCore.Backends
             };
         }
 
+        /// <summary>
+        /// Marks every refresh token belonging to <paramref name="familyId"/> as revoked.
+        /// </summary>
         private void RevokeFamily(string familyId)
         {
             foreach (var kvp in _refreshTokens)
@@ -408,6 +467,9 @@ namespace UnityAuthCore.Backends
             }
         }
 
+        /// <summary>
+        /// Maps an internal <see cref="MockAccount"/> record to a public <see cref="AuthUserProfile"/> copy.
+        /// </summary>
         private static AuthUserProfile ToProfile(MockAccount acc)
         {
             return new AuthUserProfile
@@ -425,6 +487,9 @@ namespace UnityAuthCore.Backends
 
         private long NowUnix() => new DateTimeOffset(_utcNow()).ToUnixTimeSeconds();
 
+        /// <summary>
+        /// Extracts the path portion from an absolute or relative request URL for route matching.
+        /// </summary>
         private static string ExtractPath(string url)
         {
             if (string.IsNullOrWhiteSpace(url)) return "/";
@@ -441,6 +506,9 @@ namespace UnityAuthCore.Backends
             };
         }
 
+        /// <summary>
+        /// Serializes an <see cref="ApiError"/> payload into an <see cref="HttpRawResponse"/>, setting <c>Retry-After</c> when positive.
+        /// </summary>
         private static HttpRawResponse ErrorResponse(int status, string code, string message, string reqId, int retryAfter = 0)
         {
             var err = ApiError.Create(status, code, message, reqId, retryAfter);

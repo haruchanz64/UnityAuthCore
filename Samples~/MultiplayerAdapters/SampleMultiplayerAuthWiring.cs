@@ -8,25 +8,15 @@ using UnityEngine;
 namespace UnityAuthCore.Samples.Multiplayer
 {
     /// <summary>
-    /// Example showing how to integrate MultiplayerAuthBridge with Netcode for GameObjects (NGO),
-    /// Mirror, or FishNet without coupling UnityAuthCore.Runtime to any single networking package.
-    ///
-    /// NGO wiring snippet (when com.unity.netcode.gameobjects is installed):
-    ///   // Client before StartClient():
-    ///   NetworkManager.Singleton.NetworkConfig.ConnectionData = accountController.BuildMultiplayerConnectionPayload();
-    ///   NetworkManager.Singleton.StartClient();
-    ///
-    ///   // Server / Host ConnectionApprovalCallback:
-    ///   NetworkManager.Singleton.ConnectionApprovalCallback = async (request, response) =>
-    ///   {
-    ///       response.Pending = true;
-    ///       var approval = await bridge.ApproveConnectionAsync(request.ClientNetworkId, request.Payload, serverValidator);
-    ///       response.Approved = approval.Approved;
-    ///       response.CreatePlayerObject = approval.Approved;
-    ///       response.Reason = approval.RejectionReason;
-    ///       response.Pending = false;
-    ///   };
+    /// Example showing how to integrate <see cref="MultiplayerAuthBridge"/> with Netcode for GameObjects (NGO),
+    /// Mirror, or FishNet without coupling <c>UnityAuthCore.Runtime</c> to any single networking package.
     /// </summary>
+    /// <remarks>
+    /// For NGO (<c>com.unity.netcode.gameobjects</c>), assign <see cref="CreateOutgoingConnectionPayload"/> to
+    /// <c>NetworkManager.Singleton.NetworkConfig.ConnectionData</c> before calling <c>StartClient()</c>,
+    /// and await <see cref="ValidateIncomingClientAsync"/> inside <c>ConnectionApprovalCallback</c> while
+    /// <c>response.Pending</c> is true.
+    /// </remarks>
     public sealed class SampleMultiplayerAuthWiring : MonoBehaviour
     {
         [SerializeField] private AccountController accountController;
@@ -44,6 +34,10 @@ namespace UnityAuthCore.Samples.Multiplayer
             }
         }
 
+        /// <summary>
+        /// Builds the UTF-8 connection payload from the local <see cref="AccountController"/> session.
+        /// </summary>
+        /// <returns>Serialized ticket bytes, or an empty array when <see cref="accountController"/> is unassigned or signed out.</returns>
         public byte[] CreateOutgoingConnectionPayload()
         {
             return accountController != null
@@ -51,6 +45,13 @@ namespace UnityAuthCore.Samples.Multiplayer
                 : System.Array.Empty<byte>();
         }
 
+        /// <summary>
+        /// Validates an incoming client handshake payload against the configured <see cref="IServerTokenValidator"/>
+        /// and logs the approval or rejection result.
+        /// </summary>
+        /// <param name="clientId">Network client identifier assigned by the transport.</param>
+        /// <param name="payload">Raw UTF-8 connection ticket bytes sent by the connecting client.</param>
+        /// <returns>The <see cref="MultiplayerApprovalResult"/> decision.</returns>
         public async Task<MultiplayerApprovalResult> ValidateIncomingClientAsync(ulong clientId, byte[] payload)
         {
             var approval = await _bridge.ApproveConnectionAsync(clientId, payload, _serverValidator);
@@ -65,6 +66,10 @@ namespace UnityAuthCore.Samples.Multiplayer
             return approval;
         }
 
+        /// <summary>
+        /// Unregisters <paramref name="clientId"/> from the server's active authenticated player table.
+        /// </summary>
+        /// <param name="clientId">Disconnected network client identifier.</param>
         public void OnClientDisconnected(ulong clientId)
         {
             _bridge.HandleClientDisconnected(clientId);

@@ -30,8 +30,15 @@ namespace UnityAuthCore.Samples.Backends
         private readonly string _projectUrl;
         private readonly string _anonKey;
 
+        /// <inheritdoc/>
         public string ProviderId => "supabase";
 
+        /// <summary>
+        /// Initializes a starter Supabase GoTrue REST adapter.
+        /// </summary>
+        /// <param name="http">HTTP client pipeline used to dispatch requests.</param>
+        /// <param name="supabaseProjectUrl">Supabase project base URL (trailing slashes are trimmed).</param>
+        /// <param name="supabaseAnonKey">Supabase publishable or anon key sent in the <c>apikey</c> header.</param>
         public SampleSupabaseAuthAdapter(ApiHttpClient http, string supabaseProjectUrl, string supabaseAnonKey)
         {
             _http = http ?? throw new ArgumentNullException(nameof(http));
@@ -39,24 +46,28 @@ namespace UnityAuthCore.Samples.Backends
             _anonKey = supabaseAnonKey ?? string.Empty;
         }
 
+        /// <inheritdoc/>
         public async Task<AuthResult<AuthSession>> SignInGuestAsync(string deviceId, string displayName = null, CancellationToken ct = default)
         {
             var req = BuildRequest("POST", "/auth/v1/signup", "{}", requiresAuth: false);
             return MapSession(await _http.SendJsonAsync<SupabaseSessionDto>(req, ct));
         }
 
+        /// <inheritdoc/>
         public async Task<AuthResult<AuthSession>> RegisterAsync(string email, string password, string displayName = null, CancellationToken ct = default)
         {
             var req = BuildRequest("POST", "/auth/v1/signup", JsonUtility.ToJson(new CredsReq { email = email, password = password }), requiresAuth: false);
             return MapSession(await _http.SendJsonAsync<SupabaseSessionDto>(req, ct));
         }
 
+        /// <inheritdoc/>
         public async Task<AuthResult<AuthSession>> LoginAsync(string email, string password, CancellationToken ct = default)
         {
             var req = BuildRequest("POST", "/auth/v1/token?grant_type=password", JsonUtility.ToJson(new CredsReq { email = email, password = password }), requiresAuth: false);
             return MapSession(await _http.SendJsonAsync<SupabaseSessionDto>(req, ct));
         }
 
+        /// <inheritdoc/>
         public async Task<AuthResult<AuthSession>> RefreshAsync(string refreshToken, CancellationToken ct = default)
         {
             var req = BuildRequest("POST", "/auth/v1/token?grant_type=refresh_token", JsonUtility.ToJson(new RefreshReq { refresh_token = refreshToken }), requiresAuth: false);
@@ -64,12 +75,14 @@ namespace UnityAuthCore.Samples.Backends
             return MapSession(await _http.SendJsonAsync<SupabaseSessionDto>(req, ct));
         }
 
+        /// <inheritdoc/>
         public Task<AuthResult<bool>> LogoutAsync(string accessToken, string refreshToken, CancellationToken ct = default)
         {
             var req = BuildRequest("POST", "/auth/v1/logout", null, requiresAuth: true);
             return _http.SendJsonAsync<bool>(req, ct);
         }
 
+        /// <inheritdoc/>
         public async Task<AuthResult<AuthUserProfile>> GetProfileAsync(CancellationToken ct = default)
         {
             var req = BuildRequest("GET", "/auth/v1/user", null, requiresAuth: true);
@@ -78,11 +91,15 @@ namespace UnityAuthCore.Samples.Backends
             return AuthResult<AuthUserProfile>.Ok(MapUser(res.Data), res.StatusCode);
         }
 
+        /// <summary>
+        /// Starter implementation that re-reads the current user profile; extend with a <c>PUT /auth/v1/user</c> payload or custom profiles table query.
+        /// </summary>
         public Task<AuthResult<AuthUserProfile>> UpdateProfileAsync(AuthProfileUpdateRequest update, CancellationToken ct = default)
         {
             return GetProfileAsync(ct);
         }
 
+        /// <inheritdoc/>
         public async Task<AuthResult<AuthSession>> LinkEmailPasswordAsync(string email, string password, CancellationToken ct = default)
         {
             var req = BuildRequest("PUT", "/auth/v1/user", JsonUtility.ToJson(new CredsReq { email = email, password = password }), requiresAuth: true);
@@ -91,6 +108,7 @@ namespace UnityAuthCore.Samples.Backends
             return AuthResult<AuthSession>.Ok(new AuthSession { providerId = ProviderId, user = MapUser(res.Data) }, res.StatusCode);
         }
 
+        /// <inheritdoc/>
         public async Task<AuthResult<TokenValidationResult>> IntrospectTokenAsync(string accessToken, string serverApiKey = null, CancellationToken ct = default)
         {
             var req = BuildRequest("GET", "/auth/v1/user", null, requiresAuth: false);
@@ -116,6 +134,9 @@ namespace UnityAuthCore.Samples.Backends
             });
         }
 
+        /// <summary>
+        /// Builds an <see cref="ApiRequest"/> targeting Supabase GoTrue with the project's <c>apikey</c> header attached.
+        /// </summary>
         private ApiRequest BuildRequest(string method, string path, string jsonBody, bool requiresAuth)
         {
             var req = new ApiRequest
@@ -129,6 +150,9 @@ namespace UnityAuthCore.Samples.Backends
             return req;
         }
 
+        /// <summary>
+        /// Maps a GoTrue session DTO into a framework <see cref="AuthSession"/>.
+        /// </summary>
         private AuthResult<AuthSession> MapSession(AuthResult<SupabaseSessionDto> res)
         {
             if (!res.Succeeded || res.Data == null) return AuthResult<AuthSession>.Fail(res.Error);
@@ -143,6 +167,9 @@ namespace UnityAuthCore.Samples.Backends
             }, res.StatusCode);
         }
 
+        /// <summary>
+        /// Maps a GoTrue user object into an <see cref="AuthUserProfile"/>.
+        /// </summary>
         private static AuthUserProfile MapUser(SupabaseUserDto u)
         {
             if (u == null) return new AuthUserProfile();

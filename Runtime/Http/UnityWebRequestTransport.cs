@@ -9,10 +9,16 @@ using UnityEngine.Networking;
 namespace UnityAuthCore.Http
 {
     /// <summary>
-    /// Default live HTTP/HTTPS transport powered by UnityWebRequest.
+    /// Default live HTTP/HTTPS transport powered by <see cref="UnityWebRequest"/>.
     /// </summary>
     public sealed class UnityWebRequestTransport : IHttpTransport
     {
+        /// <summary>
+        /// Dispatches <paramref name="request"/> using <see cref="UnityWebRequest"/>, setting JSON headers and aborting on cancellation.
+        /// </summary>
+        /// <param name="request">Outgoing request descriptor; timeout is clamped to at least 1 second.</param>
+        /// <param name="ct">Cancellation token that aborts the active <see cref="UnityWebRequest"/> when triggered.</param>
+        /// <returns>The raw HTTP status, response headers, body text, network-error flag, and elapsed duration in milliseconds.</returns>
         public async Task<HttpRawResponse> SendAsync(ApiRequest request, CancellationToken ct = default)
         {
             var sw = Stopwatch.StartNew();

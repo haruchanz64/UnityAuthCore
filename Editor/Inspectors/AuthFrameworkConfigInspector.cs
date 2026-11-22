@@ -6,9 +6,14 @@ using UnityEngine.UIElements;
 
 namespace UnityAuthCore.Editor.Inspectors
 {
+    /// <summary>
+    /// Custom UI Toolkit inspector for <see cref="AuthFrameworkConfig"/> that adds a shortcut button
+    /// to launch <see cref="AuthWorkbenchWindow"/> bound to the inspected config asset.
+    /// </summary>
     [CustomEditor(typeof(AuthFrameworkConfig))]
     public sealed class AuthFrameworkConfigInspector : UnityEditor.Editor
     {
+        /// <inheritdoc/>
         public override VisualElement CreateInspectorGUI()
         {
             var root = new VisualElement();

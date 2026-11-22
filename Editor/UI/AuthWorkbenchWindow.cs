@@ -15,6 +15,10 @@ using UnityEngine.UIElements;
 
 namespace UnityAuthCore.Editor.UI
 {
+    /// <summary>
+    /// Four-tab UI Toolkit Editor workbench for exercising authentication flows, inspecting JWT claims,
+    /// testing single-flight 401 token refresh, verifying multiplayer handshake tickets, and reviewing HTTP traces.
+    /// </summary>
     public sealed class AuthWorkbenchWindow : EditorWindow
     {
         private enum Tab { Session, JwtLab, Multiplayer, ApiTrace }
@@ -40,6 +44,9 @@ namespace UnityAuthCore.Editor.UI
         private VisualElement _body;
         private readonly List<Button> _tabButtons = new List<Button>();
 
+        /// <summary>
+        /// Opens or focuses the Auth and API Console Editor window in its default sandbox mode.
+        /// </summary>
         [MenuItem("Tools/HaruChanZ64/Networking/UnityAuthCore/Auth and API Console", false, 146)]
         public static void OpenWindow()
         {
@@ -48,6 +55,10 @@ namespace UnityAuthCore.Editor.UI
             win.Show();
         }
 
+        /// <summary>
+        /// Opens or focuses the Auth and API Console prebound to <paramref name="config"/>.
+        /// </summary>
+        /// <param name="config">Framework configuration asset to bind to the console session.</param>
         public static void OpenWithConfig(AuthFrameworkConfig config)
         {
             var win = GetWindow<AuthWorkbenchWindow>("UnityAuthCore Console");
@@ -66,6 +77,9 @@ namespace UnityAuthCore.Editor.UI
             }
         }
 
+        /// <summary>
+        /// Builds the root UI Toolkit layout including header, config selector, tab bar, and scrollable body.
+        /// </summary>
         private void CreateGUI()
         {
             var root = rootVisualElement;
@@ -128,6 +142,9 @@ namespace UnityAuthCore.Editor.UI
             RebuildBody();
         }
 
+        /// <summary>
+        /// Creates a navigation tab button, registers its click handler, and appends it to <paramref name="parent"/>.
+        /// </summary>
         private void AddTabButton(VisualElement parent, string text, Tab tab)
         {
             var btn = new Button(() =>
@@ -142,6 +159,9 @@ namespace UnityAuthCore.Editor.UI
             parent.Add(btn);
         }
 
+        /// <summary>
+        /// Updates active CSS classes across the tab strip to match <see cref="_activeTab"/>.
+        /// </summary>
         private void UpdateTabStyles()
         {
             for (int i = 0; i < _tabButtons.Count; i++)
@@ -151,6 +171,10 @@ namespace UnityAuthCore.Editor.UI
             }
         }
 
+        /// <summary>
+        /// Reconstructs <see cref="_client"/> using <see cref="_configAsset"/> when assigned or the local sandbox settings,
+        /// always backed by an <see cref="InMemoryTokenStore"/> so console tests do not overwrite game session files.
+        /// </summary>
         private void RebuildClient()
         {
             _mockTransport = null;
@@ -181,6 +205,9 @@ namespace UnityAuthCore.Editor.UI
             }
         }
 
+        /// <summary>
+        /// Clears and repopulates the active tab body panel.
+        /// </summary>
         private void RebuildBody()
         {
             if (_body == null) return;
@@ -196,6 +223,9 @@ namespace UnityAuthCore.Editor.UI
             }
         }
 
+        /// <summary>
+        /// Populates Tab 1 with backend target controls, current session summary, and account action buttons.
+        /// </summary>
         private void BuildSessionTab()
         {
             // Target selector when no Config Asset is assigned
@@ -307,6 +337,9 @@ namespace UnityAuthCore.Editor.UI
             _body.Add(formCard);
         }
 
+        /// <summary>
+        /// Populates Tab 2 with decoded JWT claims and controls to test manual and single-flight 401 refresh.
+        /// </summary>
         private void BuildJwtLabTab()
         {
             var jwtCard = MakeCard("Decoded Access JWT Claims");
@@ -372,6 +405,9 @@ namespace UnityAuthCore.Editor.UI
             _body.Add(sfCard);
         }
 
+        /// <summary>
+        /// Populates Tab 3 with controls for testing multiplayer ticket serialization and server validation.
+        /// </summary>
         private void BuildMultiplayerTab()
         {
             var mpCard = MakeCard("Dedicated Server / Host Connection Approval Tester");
@@ -407,6 +443,10 @@ namespace UnityAuthCore.Editor.UI
             _body.Add(mpCard);
         }
 
+        /// <summary>
+        /// Builds a connection ticket from the active session and runs <see cref="MultiplayerAuthBridge.ApproveConnectionAsync"/>
+        /// using either local HS256 verification or remote token introspection.
+        /// </summary>
         private async Task RunMultiplayerTest(bool useRemoteIntrospect)
         {
             if (!_client.IsSignedIn)
@@ -433,6 +473,9 @@ namespace UnityAuthCore.Editor.UI
             RebuildBody();
         }
 
+        /// <summary>
+        /// Populates Tab 4 with the reverse-chronological HTTP request trace log captured by <see cref="ApiHttpClient"/>.
+        /// </summary>
         private void BuildApiTraceTab()
         {
             var card = MakeCard($"HTTP API Trace ({_client.HttpClient.Traces.Count} captured)");
@@ -480,6 +523,9 @@ namespace UnityAuthCore.Editor.UI
             _body.Add(card);
         }
 
+        /// <summary>
+        /// Executes an async UI button callback and surfaces unhandled exceptions in the status banner.
+        /// </summary>
         private async void RunAsync(Func<Task> action)
         {
             try
@@ -492,6 +538,9 @@ namespace UnityAuthCore.Editor.UI
             }
         }
 
+        /// <summary>
+        /// Formats an <see cref="AuthResult{T}"/> outcome into the session status banner.
+        /// </summary>
         private void ReportResult<T>(string label, AuthResult<T> result)
         {
             if (result.Succeeded)
@@ -504,6 +553,9 @@ namespace UnityAuthCore.Editor.UI
             }
         }
 
+        /// <summary>
+        /// Updates the banner message and severity style, then refreshes the window body.
+        /// </summary>
         private void SetStatus(string message, bool isError)
         {
             _lastStatusMessage = message;
@@ -511,6 +563,9 @@ namespace UnityAuthCore.Editor.UI
             RebuildBody();
         }
 
+        /// <summary>
+        /// Creates a styled card container with a section header label.
+        /// </summary>
         private static VisualElement MakeCard(string title)
         {
             var card = new VisualElement();
@@ -521,6 +576,9 @@ namespace UnityAuthCore.Editor.UI
             return card;
         }
 
+        /// <summary>
+        /// Creates a styled console button with an optional variant USS class.
+        /// </summary>
         private static Button MakeBtn(string text, string variantClass, Action onClick)
         {
             var btn = new Button(onClick) { text = text };
